@@ -17,10 +17,10 @@ import (
 
 // SignedDetails is a struct that contains the signed details
 type SignedDetails struct {
-	Email     string
-	Firs_name string
-	Last_name string
-	Uid       string
+	Email      string
+	First_name string
+	Last_name  string
+	Uid        string
 	jwt.StandardClaims
 }
 
@@ -31,10 +31,10 @@ var SECRET_KEY string = os.Getenv("SECRET_KEY")
 // GenerateAllTokens generates both the access and refresh tokens
 func GenerateAllTokens(email string, firtsName string, lastName string, uid string) (signedToken string, signedRefreshToken string, err error) {
 	claims := &SignedDetails{
-		Email:     email,
-		Firs_name: firtsName,
-		Last_name: lastName,
-		Uid:       uid,
+		Email:      email,
+		First_name: firtsName,
+		Last_name:  lastName,
+		Uid:        uid,
 		StandardClaims: jwt.StandardClaims{
 			ExpiresAt: time.Now().Local().Add(time.Hour * time.Duration(24)).Unix(),
 		},

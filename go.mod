@@ -5,6 +5,7 @@ go 1.20
 require (
 	github.com/gin-gonic/gin v1.9.0
 	github.com/go-playground/validator/v10 v10.13.0
+	github.com/heroku/x v0.0.58
 	github.com/joho/godotenv v1.5.1
 	go.mongodb.org/mongo-driver v1.11.6
 	golang.org/x/crypto v0.7.0
