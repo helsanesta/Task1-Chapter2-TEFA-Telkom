@@ -146,7 +146,13 @@ func UpdateProduct() gin.HandlerFunc {
 		update := bson.M{"$set": bson.M{
 			"name":        product.Name,
 			"description": product.Description,
+			"category":    product.Category,
+			"image":       product.ImageUrl,
 			"price":       product.Price,
+			"rate":        product.Rate,
+			"location":    product.Location,
+			"quantity":    product.Quantity,
+			"store":       product.Store,
 			"updated_at":  time.Now().UTC(),
 		}}
 
