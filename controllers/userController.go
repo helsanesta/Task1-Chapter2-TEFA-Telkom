@@ -1,11 +1,18 @@
 package controllers
 
 import (
+	"context"
 	"fmt"
 	"log"
+	"net/http"
 	"task1-ch2-api-product/database"
+	"task1-ch2-api-product/models"
+	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -35,4 +42,98 @@ func VerifyPassword(userPassword string, providedPassword string) (bool, string)
 	}
 
 	return check, msg
+}
+
+// CreateUser is a function to create a new user
+func SignUp() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
+		var user models.User
+		defer cancel()
+
+		if err := c.BindJSON(&user); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		validationErr := validate.Struct(user)
+		if validationErr != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": validationErr.Error()})
+			return
+		}
+
+		count, err := userCollection.CountDocuments(ctx, bson.M{"email": user.Email})
+
+		if err != nil {
+			log.Panic(err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "error occured while checking for the email"})
+			return
+		}
+
+		if count > 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "email already exists"})
+			return
+		}
+
+		password := HashPassword(*user.Password)
+		user.Password = &password
+
+		count, err = userCollection.CountDocuments(ctx, bson.M{"phone": user.Phone})
+
+		if err != nil {
+			log.Panic(err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "error occured while checking for the phone number"})
+			return
+		}
+
+		if count > 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "phone number already exists"})
+			return
+		}
+
+		user.Created_at, _ = time.Parse(time.RFC3339, time.Now().Format(time.RFC3339))
+		user.Updated_at, _ = time.Parse(time.RFC3339, time.Now().Format(time.RFC3339))
+		user.ID = primitive.NewObjectID()
+		user.User_id = user.ID.Hex()
+
+		resultInsertionNumber, insertErr := userCollection.InsertOne(ctx, user)
+		if insertErr != nil {
+			msg := fmt.Sprintf("User was not created")
+			c.JSON(http.StatusInternalServerError, gin.H{"error": msg})
+			return
+		}
+
+		defer cancel()
+		c.JSON(http.StatusOK, resultInsertionNumber)
+	}
+}
+
+// Login is the api used to tget a single user
+func Login() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
+		var user models.User
+		var foundUser models.User
+		defer cancel()
+
+		if err := c.BindJSON(&user); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		err := userCollection.FindOne(ctx, bson.M{"email": user.Email}).Decode(&foundUser)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "login or password is incorrect"})
+			return
+		}
+
+		passwordIsValid, msg := VerifyPassword(*user.Password, *foundUser.Password)
+		defer cancel()
+		if !passwordIsValid {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": msg})
+			return
+		}
+
+		c.JSON(http.StatusOK, foundUser)
+	}
 }
