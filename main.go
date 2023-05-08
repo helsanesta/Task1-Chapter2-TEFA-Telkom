@@ -19,6 +19,7 @@ func main() {
 	router := gin.New()
 	router.Use(gin.Logger())
 	routes.UserRoutes(router)
+	routes.ProductRoutes(router)
 
 	router.Run(":" + port)
 }
