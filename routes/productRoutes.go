@@ -13,5 +13,5 @@ func ProductRoutes(incomingRoutes *gin.Engine) {
 	incomingRoutes.POST("/products", middleware.Authentication(), controller.CreateProduct())
 	incomingRoutes.PUT("/products/:id", middleware.Authentication(), controller.UpdateProduct())
 	incomingRoutes.DELETE("/products/:id", middleware.Authentication(), controller.DeleteProduct())
-	incomingRoutes.GET("/search", controller.SearchProduct())
+	incomingRoutes.GET("products/search", controller.SearchProduct())
 }

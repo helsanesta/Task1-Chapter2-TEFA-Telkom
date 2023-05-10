@@ -1,13 +1,20 @@
 package controllers
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io/ioutil"
 	"net/http"
+	"os"
+	"path"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
+	"github.com/google/uuid"
+	"github.com/minio/minio-go/v7"
+	"github.com/minio/minio-go/v7/pkg/credentials"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -41,6 +48,52 @@ func CreateProduct() gin.HandlerFunc {
 		product.Updated_at, _ = time.Parse(time.RFC3339, time.Now().Format(time.RFC3339))
 		product.ID = primitive.NewObjectID()
 		product.Product_id = product.ID.Hex()
+
+		// Upload file to MinIO
+		file, err := c.FormFile("image")
+		if err == nil {
+			// Generate random file name
+			randName := uuid.New().String() + path.Ext(file.Filename)
+			// Connect to MinIO server
+			endpoint := os.Getenv("MINIO_ENDPOINT")
+			accessKey := os.Getenv("MINIO_ACCESS_KEY")
+			secretKey := os.Getenv("MINIO_SECRET_KEY")
+			useSSL := true // Set to true if using HTTPS
+			minioClient, err := minio.New(endpoint, &minio.Options{
+				Creds:  credentials.NewStaticV4(accessKey, secretKey, ""),
+				Secure: useSSL,
+			})
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+
+			// Open the file for reading
+			fileReader, err := file.Open()
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+
+			defer fileReader.Close()
+
+			// Read the contents of the file into a byte slice
+			fileBytes, err := ioutil.ReadAll(fileReader)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+
+			// Upload file to MinIO
+			_, err = minioClient.PutObject(ctx, "product-images", randName, bytes.NewReader(fileBytes), int64(len(fileBytes)), minio.PutObjectOptions{})
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+
+			// Set image URL in product
+			product.ImageUrl = "https://" + endpoint + "/product-images/" + randName
+		}
 
 		resultInsertionNumber, insertErr := productCollection.InsertOne(ctx, product)
 		if insertErr != nil {
@@ -81,7 +134,7 @@ func GetProducts() gin.HandlerFunc {
 
 		// Define filter and options for MongoDB find operation
 		filter := bson.M{}
-		options := options.Find().SetSort(bson.D{{"created_at", -1}})
+		options := options.Find().SetSort(bson.D{{Key: "created_at", Value: -1}})
 
 		// Execute MongoDB find operation
 		cursor, err := productCollection.Find(ctx, filter, options)
@@ -147,7 +200,6 @@ func UpdateProduct() gin.HandlerFunc {
 			"name":        product.Name,
 			"description": product.Description,
 			"category":    product.Category,
-			"image":       product.ImageUrl,
 			"price":       product.Price,
 			"rate":        product.Rate,
 			"location":    product.Location,
@@ -155,6 +207,53 @@ func UpdateProduct() gin.HandlerFunc {
 			"store":       product.Store,
 			"updated_at":  time.Now().UTC(),
 		}}
+
+		// Upload new image to MinIO and update image URL in product
+		file, err := c.FormFile("image")
+		if err == nil {
+			// Generate random file name
+			randName := uuid.New().String() + path.Ext(file.Filename)
+
+			// Connect to MinIO server
+			endpoint := os.Getenv("MINIO_ENDPOINT")
+			accessKey := os.Getenv("MINIO_ACCESS_KEY")
+			secretKey := os.Getenv("MINIO_SECRET_KEY")
+			useSSL := true // Set to true if using HTTPS
+			minioClient, err := minio.New(endpoint, &minio.Options{
+				Creds:  credentials.NewStaticV4(accessKey, secretKey, ""),
+				Secure: useSSL,
+			})
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+
+			// Open the file for reading
+			fileReader, err := file.Open()
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+
+			defer fileReader.Close()
+
+			// Read the contents of the file into a byte slice
+			fileBytes, err := ioutil.ReadAll(fileReader)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+
+			// Upload file to MinIO
+			_, err = minioClient.PutObject(ctx, "product-images", randName, bytes.NewReader(fileBytes), int64(len(fileBytes)), minio.PutObjectOptions{})
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+
+			// Set image URL in product
+			update["$set"].(bson.M)["image"] = "https://" + endpoint + "/product-images/" + randName
+		}
 
 		// Perform MongoDB update operation
 		result, err := productCollection.UpdateOne(ctx, filter, update)
@@ -216,7 +315,7 @@ func SearchProduct() gin.HandlerFunc {
 
 		// Define filter and options for MongoDB find operation
 		filter := bson.M{"name": primitive.Regex{Pattern: name, Options: "i"}}
-		options := options.Find().SetSort(bson.D{{"created_at", -1}})
+		options := options.Find().SetSort(bson.D{{Key: "created_at", Value: -1}})
 
 		// Execute MongoDB find operation
 		cursor, err := productCollection.Find(ctx, filter, options)
